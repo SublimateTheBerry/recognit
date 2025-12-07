@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recognit - Whisper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        /* Анимация загрузки */
+        .pulse-ring {
+            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+            animation: pulse-blue 2s infinite;
+        }
+        @keyframes pulse-blue {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col items-center justify-center overflow-hidden">
+
+    <!-- Главный контейнер -->
+    <main class="w-full max-w-2xl p-6 flex flex-col gap-6 relative z-10">
+        
+        <!-- Заголовок -->
+        <header class="text-center space-y-2">
+            <h1 class="text-4xl font-light tracking-tight text-slate-900">Recognit</h1>
+            <p class="text-sm text-slate-400">Приватная расшифровка прямо в браузере</p>
+        </header>
+
+        <!-- Статус загрузки модели -->
+        <div id="status-bar" class="hidden w-full bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-xs font-medium text-center transition-all">
+            Загрузка модели... 0%
+        </div>
+
+        <!-- Зона загрузки / Записи -->
+        <div class="glass rounded-2xl p-8 shadow-xl transition-all hover:shadow-2xl border border-slate-200 bg-white">
+            
+            <div id="upload-area" class="border-2 border-dashed border-slate-200 rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition-colors group">
+                <svg class="w-10 h-10 text-slate-300 group-hover:text-blue-500 mb-3 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                <p class="text-slate-500 font-medium group-hover:text-blue-500 transition-colors">Нажми для выбора аудио</p>
+                <p class="text-xs text-slate-400 mt-1">или перетащи файл сюда</p>
+                <input type="file" id="file-input" accept="audio/*,video/*" class="hidden">
+            </div>
+
+            <!-- Настройки (Accordion) -->
+            <div class="mt-6">
+                <button id="settings-toggle" class="flex items-center text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    Настройки
+                </button>
+                
+                <div id="settings-panel" class="hidden mt-4 grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Модель</label>
+                        <select id="model-select" class="w-full bg-slate-100 border-none rounded-lg text-slate-700 text-xs py-2 px-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="Xenova/whisper-tiny">Tiny (Быстрая, 75MB)</option>
+                            <option value="Xenova/whisper-base" selected>Base (Баланс, 145MB)</option>
+                            <option value="Xenova/whisper-small">Small (Точная, 480MB)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Язык</label>
+                        <select id="language-select" class="w-full bg-slate-100 border-none rounded-lg text-slate-700 text-xs py-2 px-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="russian">Русский</option>
+                            <option value="english">English</option>
+                            <option value="german">Deutsch</option>
+                            <option value="spanish">Español</option>
+                            <option value="french">Français</option>
+                            <option value="auto">Автоопределение</option>
+                        </select>
+                    </div>
+                     <div class="col-span-2">
+                         <label class="flex items-center space-x-2 cursor-pointer">
+                             <input type="checkbox" id="timestamps-check" class="form-checkbox text-blue-500 rounded h-4 w-4 bg-slate-100 border-none">
+                             <span class="text-slate-600 text-xs">Добавлять таймкоды</span>
+                         </label>
+                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Результат -->
+        <div id="output-container" class="hidden bg-white rounded-2xl p-6 shadow-lg border border-slate-100 min-h-[150px] relative">
+            <div id="output-text" class="prose prose-slate max-w-none text-sm leading-relaxed text-slate-700 whitespace-pre-wrap"></div>
+            <div id="processing-indicator" class="absolute top-4 right-4 flex space-x-1">
+                <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce delay-75"></div>
+                <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce delay-150"></div>
+            </div>
+        </div>
+
+    </main>
+
+    <script src="main.js" type="module"></script>
+</body>
+</html>
