@@ -1,127 +1,163 @@
-// Запуск воркера
 const worker = new Worker('worker.js', { type: 'module' });
 
-// Элементы UI
-const fileInput = document.getElementById('file-input');
-const uploadArea = document.getElementById('upload-area');
-const statusDiv = document.getElementById('status-bar');
-const outputContainer = document.getElementById('output-container');
-const outputText = document.getElementById('output-text');
-const processingIndicator = document.getElementById('processing-indicator');
-const settingsToggle = document.getElementById('settings-toggle');
-const settingsPanel = document.getElementById('settings-panel');
+const els = {
+    fileInput: document.getElementById('file-input'),
+    uploadArea: document.getElementById('upload-area'),
+    statusContainer: document.getElementById('status-container'),
+    statusText: document.getElementById('status-text'),
+    statusPercent: document.getElementById('status-percent'),
+    progressBar: document.getElementById('progress-bar'),
+    resultArea: document.getElementById('output-area'),
+    resultText: document.getElementById('result-text'),
+    settingsBtn: document.getElementById('settings-btn'),
+    settingsPanel: document.getElementById('settings-panel'),
+    modelSelect: document.getElementById('model-select'),
+    langSelect: document.getElementById('language-select'),
+    timestampsCheck: document.getElementById('timestamps-check'),
+    gpuCheck: document.getElementById('gpu-check'),
+};
 
-// Состояние
-let isModelLoading = false;
-let isProcessing = false;
+let isBusy = false;
 
-// 1. Управление настройками
-settingsToggle.addEventListener('click', () => {
-    settingsPanel.classList.toggle('hidden');
+// Переключение настроек
+els.settingsBtn.addEventListener('click', () => {
+    els.settingsPanel.classList.toggle('hidden');
 });
 
-// 2. Обработка Drag & Drop
-uploadArea.addEventListener('click', () => fileInput.click());
-
-uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadArea.classList.add('border-blue-500', 'bg-blue-50');
+// Drag & Drop
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    els.uploadArea.addEventListener(eventName, preventDefaults, false);
 });
 
-uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('border-blue-500', 'bg-blue-50');
+function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+els.uploadArea.addEventListener('dragover', () => els.uploadArea.classList.add('border-blue-400', 'bg-slate-50'));
+els.uploadArea.addEventListener('dragleave', () => els.uploadArea.classList.remove('border-blue-400', 'bg-slate-50'));
+els.uploadArea.addEventListener('drop', (e) => {
+    els.uploadArea.classList.remove('border-blue-400', 'bg-slate-50');
+    handleFiles(e.dataTransfer.files);
 });
 
-uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.classList.remove('border-blue-500', 'bg-blue-50');
-    const file = e.dataTransfer.files[0];
-    if (file) processFile(file);
-});
+els.fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) processFile(file);
-});
-
-// 3. Основная логика запуска
-async function processFile(file) {
-    if (isProcessing) return;
+async function handleFiles(files) {
+    if (files.length === 0 || isBusy) return;
+    const file = files[0];
     
-    // Сброс UI
-    outputContainer.classList.remove('hidden');
-    outputText.textContent = 'Инициализация...';
-    processingIndicator.classList.remove('hidden');
-    isProcessing = true;
-
-    // Чтение аудио
-    const audioData = await readAudio(file);
+    startProcess();
     
-    // Получение настроек
-    const model = document.getElementById('model-select').value;
-    const language = document.getElementById('language-select').value;
-    const timestamps = document.getElementById('timestamps-check').checked;
+    try {
+        updateStatus('Чтение аудиофайла...', 5);
+        const audio = await readAudio(file);
+        
+        updateStatus('Инициализация модели...', 15);
+        
+        worker.postMessage({
+            type: 'load',
+            model: els.modelSelect.value,
+            useGpu: els.gpuCheck.checked
+        });
 
-    // Шаг 1: Загрузка модели (если не загружена)
-    worker.postMessage({ type: 'load', model: model });
+        worker.currentAudioData = audio;
 
-    // Ждем готовности, затем запускаем
-    // (Логика упрощена: воркер сам поймет, загружена ли модель)
-    worker.postMessage({ 
-        type: 'run', 
-        audio: audioData, 
-        language: language,
-        timestamps: timestamps 
-    });
+    } catch (e) {
+        showError('Не удалось прочитать файл. Проверьте формат аудио.');
+    }
 }
 
-// 4. Обработка сообщений от Воркера
 worker.addEventListener('message', (e) => {
     const { status, data, file, progress } = e.data;
 
     if (status === 'progress') {
-        // Показываем загрузку весов модели
-        statusDiv.classList.remove('hidden');
-        statusDiv.textContent = `Загрузка ${file}: ${Math.round(progress)}%`;
+        // Округляем до целого для красоты
+        const p = Math.round(progress);
+        els.statusText.textContent = `Загрузка: ${file}`;
+        els.statusPercent.textContent = `${p}%`;
+        els.progressBar.style.width = `${p}%`;
+    }
+    
+    if (status === 'loading') {
+        updateStatus(data, 40);
+    }
+    
+    if (status === 'info') {
+        updateStatus(data, 45, true);
     }
 
     if (status === 'ready') {
-        statusDiv.classList.add('hidden');
-        outputText.textContent = 'Обработка аудио...';
+        updateStatus('Запуск расшифровки...', 60);
+        
+        worker.postMessage({
+            type: 'run',
+            audio: worker.currentAudioData,
+            language: els.langSelect.value,
+            timestamps: els.timestampsCheck.checked
+        });
     }
 
-    if (status === 'partial') {
-        // Частичный результат (потоковая передача)
-        // Внимание: частичный вывод в текущей версии Transformers.js может быть дерганным
-        // Мы просто обновляем текст
-       // outputText.textContent = data; // Раскомментируй для риал-тайма
+    if (status === 'working') {
+         updateStatus('Обработка аудио...', 80, true);
     }
 
     if (status === 'complete') {
-        isProcessing = false;
-        processingIndicator.classList.add('hidden');
-        
-        if (typeof data === 'string') {
-             outputText.textContent = data;
-        } else if (Array.isArray(data)) {
-            // Если включены таймкоды, формат другой
-            outputText.innerHTML = data.map(chunk => 
-                `<span class="text-xs text-blue-400">[${formatTime(chunk.timestamp[0])} -> ${formatTime(chunk.timestamp[1])}]</span> ${chunk.text}<br>`
-            ).join('');
-        } else {
-             outputText.textContent = data.text;
-        }
+        finishProcess(data);
     }
-    
+
     if (status === 'error') {
-        isProcessing = false;
-        processingIndicator.classList.add('hidden');
-        outputText.textContent = `Ошибка: ${data}`;
-        outputText.classList.add('text-red-500');
+        showError(data);
     }
 });
 
-// Хелпер: чтение аудио файла в формат, понятный библиотеке (Float32Array)
+function startProcess() {
+    isBusy = true;
+    els.statusContainer.classList.remove('hidden');
+    els.resultArea.classList.add('hidden');
+    els.resultArea.classList.remove('opacity-100');
+    els.resultText.innerHTML = '';
+}
+
+function updateStatus(text, percent, pulse = false) {
+    els.statusText.textContent = text;
+    els.statusPercent.textContent = `${percent}%`;
+    els.progressBar.style.width = `${percent}%`;
+    if (pulse) {
+        els.progressBar.classList.add('animate-pulse');
+    } else {
+        els.progressBar.classList.remove('animate-pulse');
+    }
+}
+
+function finishProcess(data) {
+    isBusy = false;
+    els.statusContainer.classList.add('hidden');
+    els.resultArea.classList.remove('hidden');
+    
+    // Небольшая задержка для плавного появления
+    setTimeout(() => {
+        els.resultArea.classList.add('opacity-100');
+    }, 50);
+    
+    let text = '';
+    if (typeof data === 'string') {
+        text = data;
+    } else if (Array.isArray(data)) {
+        text = data.map(chunk => {
+            const [start, end] = chunk.timestamp;
+            return `<span class="text-blue-400 text-xs select-none">[${formatTime(start)} - ${formatTime(end)}]</span> ${chunk.text}`;
+        }).join('\n');
+    } else {
+        text = data.text;
+    }
+    
+    els.resultText.innerHTML = text; // innerHTML для цветных таймкодов
+}
+
+function showError(msg) {
+    isBusy = false;
+    els.statusContainer.classList.add('hidden');
+    alert('Произошла ошибка: ' + msg);
+}
+
 async function readAudio(file) {
     const arrayBuffer = await file.arrayBuffer();
     const audioContext = new AudioContext({ sampleRate: 16000 });
@@ -129,9 +165,7 @@ async function readAudio(file) {
     return audioBuffer.getChannelData(0);
 }
 
-// Хелпер: форматирование времени
 function formatTime(s) {
-    if(!s) return "00:00";
     const min = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${min}:${sec.toString().padStart(2, '0')}`;
