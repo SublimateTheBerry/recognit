@@ -1,30 +1,37 @@
-// Импортируем библиотеку прямо с CDN Hugging Face
-import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.0';
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
 
-// Отключаем загрузку локальных моделей, используем кэш браузера
 env.allowLocalModels = false;
 
+// Полифилл для self, на случай странного окружения
+if (typeof self === 'undefined') {
+    globalThis.self = globalThis;
+}
+
 let transcriber = null;
-let currentModel = null;
+let currentModelId = null;
+let currentDevice = null;
 
-// Слушаем сообщения от main.js
 self.addEventListener('message', async (event) => {
-    const message = event.data;
+    const { type, model, audio, language, timestamps, useGpu } = event.data;
 
-    // 1. Инициализация / Смена модели
-    if (message.type === 'load') {
-        if (transcriber && currentModel === message.model) {
+    if (type === 'load') {
+        const device = useGpu ? 'webgpu' : 'wasm';
+        
+        if (transcriber && currentModelId === model && currentDevice === device) {
             self.postMessage({ status: 'ready' });
             return;
         }
 
         try {
-            self.postMessage({ status: 'loading', data: 'Загрузка модели...' });
+            self.postMessage({ status: 'loading', data: 'Загрузка компонентов модели...' });
             
-            // Загружаем pipeline
-            transcriber = await pipeline('automatic-speech-recognition', message.model, {
+            if (device === 'webgpu') {
+                self.postMessage({ status: 'info', data: 'Подготовка графического ускорителя (это может занять время при первом запуске)...' });
+            }
+
+            transcriber = await pipeline('automatic-speech-recognition', model, {
+                device: device,
                 progress_callback: (data) => {
-                    // Отправляем прогресс загрузки файлов (весов)
                     if (data.status === 'progress') {
                         self.postMessage({ 
                             status: 'progress', 
@@ -35,45 +42,42 @@ self.addEventListener('message', async (event) => {
                 }
             });
 
-            currentModel = message.model;
+            currentModelId = model;
+            currentDevice = device;
             self.postMessage({ status: 'ready' });
+
         } catch (error) {
-            self.postMessage({ status: 'error', data: error.message });
+            if (device === 'webgpu') {
+                 self.postMessage({ status: 'error', data: `Ошибка запуска WebGPU. Попробуйте отключить ускорение в настройках.` });
+            } else {
+                 self.postMessage({ status: 'error', data: error.message });
+            }
         }
     }
 
-    // 2. Запуск расшифровки
-    if (message.type === 'run') {
+    if (type === 'run') {
         if (!transcriber) return;
 
         try {
-            // Настройки генерации
+            self.postMessage({ status: 'working', data: 'Идет расшифровка аудио...' });
+
             const options = {
-                chunk_length_s: 30, // Разбивка на куски
+                chunk_length_s: 30,
                 stride_length_s: 5,
-                language: message.language === 'auto' ? null : message.language,
+                language: language === 'auto' ? null : language,
                 task: 'transcribe',
-                return_timestamps: message.timestamps, // Таймкоды
-                callback_function: (beams) => {
-                    // Эта функция вызывается в реальном времени, когда есть частичный результат
-                    const decodedText = transcriber.tokenizer.decode(beams[0].output_token_ids, { skip_special_tokens: true });
-                    
-                    self.postMessage({ 
-                        status: 'partial', 
-                        data: decodedText 
-                    });
-                }
+                return_timestamps: timestamps,
             };
 
-            const output = await transcriber(message.audio, options);
+            const result = await transcriber(audio, options);
             
             self.postMessage({ 
                 status: 'complete', 
-                data: output 
+                data: result 
             });
 
         } catch (error) {
-            self.postMessage({ status: 'error', data: error.message });
+            self.postMessage({ status: 'error', data: `Ошибка при обработке: ${error.message}` });
         }
     }
 });
