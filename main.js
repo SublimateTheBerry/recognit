@@ -14,7 +14,6 @@ const els = {
     modelSelect: document.getElementById('model-select'),
     langSelect: document.getElementById('language-select'),
     timestampsCheck: document.getElementById('timestamps-check'),
-    gpuCheck: document.getElementById('gpu-check'),
     fp32Check: document.getElementById('fp32-check'),
 };
 
@@ -56,7 +55,6 @@ async function handleFiles(files) {
         worker.postMessage({
             type: 'load',
             model: els.modelSelect.value,
-            useGpu: els.gpuCheck.checked,
             useFp32: els.fp32Check.checked
         });
 
