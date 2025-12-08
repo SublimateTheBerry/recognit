@@ -2,35 +2,45 @@ import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers
 
 env.allowLocalModels = false;
 
-// Полифилл для self, на случай странного окружения
 if (typeof self === 'undefined') {
     globalThis.self = globalThis;
 }
 
 let transcriber = null;
-let currentModelId = null;
-let currentDevice = null;
+let currentSettings = null; // Храним настройки модели, чтобы знать, надо ли перезагружать
 
 self.addEventListener('message', async (event) => {
-    const { type, model, audio, language, timestamps, useGpu } = event.data;
+    // Добавили useFp32
+    const { type, model, audio, language, timestamps, useFp32 } = event.data;
 
     if (type === 'load') {
-        const device = useGpu ? 'webgpu' : 'wasm';
+        const device = 'webgpu'; // Принудительно ставим WebGPU, раз уж мы боремся за него
         
-        if (transcriber && currentModelId === model && currentDevice === device) {
+        // Проверяем, изменилась ли модель или настройки точности (FP32)
+        const settingsChanged = !currentSettings || 
+                                currentSettings.model !== model || 
+                                currentSettings.quantized !== !useFp32;
+
+        if (transcriber && !settingsChanged) {
             self.postMessage({ status: 'ready' });
             return;
         }
 
         try {
-            self.postMessage({ status: 'loading', data: 'Загрузка компонентов модели...' });
+            self.postMessage({ status: 'loading', data: 'Загрузка нейросети (может занять время)...' });
             
             if (device === 'webgpu') {
-                self.postMessage({ status: 'info', data: 'Подготовка графического ускорителя (это может занять время при первом запуске)...' });
+                self.postMessage({ status: 'info', data: 'Компиляция шейдеров видеокарты...' });
             }
 
+            /* 
+               ВАЖНЫЙ МОМЕНТ:
+               quantized: false — скачивает полную FP32 модель.
+               Это заставляет WebGPU работать на полную.
+            */
             transcriber = await pipeline('automatic-speech-recognition', model, {
                 device: device,
+                quantized: !useFp32, // Если useFp32=true, то quantized=false
                 progress_callback: (data) => {
                     if (data.status === 'progress') {
                         self.postMessage({ 
@@ -42,16 +52,11 @@ self.addEventListener('message', async (event) => {
                 }
             });
 
-            currentModelId = model;
-            currentDevice = device;
+            currentSettings = { model, quantized: !useFp32 };
             self.postMessage({ status: 'ready' });
 
         } catch (error) {
-            if (device === 'webgpu') {
-                 self.postMessage({ status: 'error', data: `Ошибка запуска WebGPU. Попробуйте отключить ускорение в настройках.` });
-            } else {
-                 self.postMessage({ status: 'error', data: error.message });
-            }
+            self.postMessage({ status: 'error', data: `Ошибка WebGPU: ${error.message}. Попробуйте модель поменьше или отключите FP32.` });
         }
     }
 
@@ -59,7 +64,7 @@ self.addEventListener('message', async (event) => {
         if (!transcriber) return;
 
         try {
-            self.postMessage({ status: 'working', data: 'Идет расшифровка аудио...' });
+            self.postMessage({ status: 'working', data: 'Расшифровка на видеокарте...' });
 
             const options = {
                 chunk_length_s: 30,
@@ -77,7 +82,7 @@ self.addEventListener('message', async (event) => {
             });
 
         } catch (error) {
-            self.postMessage({ status: 'error', data: `Ошибка при обработке: ${error.message}` });
+            self.postMessage({ status: 'error', data: error.message });
         }
     }
 });
