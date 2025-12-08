@@ -67,50 +67,53 @@
             </button>
         </div>
 
-        <!-- Панель настроек -->
-        <div id="settings-panel" class="hidden mt-2 bg-slate-50/50 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in border border-slate-100">
-            <div>
-                <label class="block text-[11px] uppercase tracking-wider text-slate-400 mb-2 font-medium">Точность модели</label>
-                <div class="relative">
-                    <select id="model-select" class="appearance-none w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm text-slate-600 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow">
-                        <option value="Xenova/whisper-tiny">Tiny (Моментальная, базовая точность)</option>
-                        <option value="Xenova/whisper-base">Base (Сбалансированная)</option>
-                        <option value="Xenova/whisper-small" selected>Small (Высокая точность, требует ресурсов)</option>
-                    </select>
-                </div>
-            </div>
-            <div>
-                <label class="block text-[11px] uppercase tracking-wider text-slate-400 mb-2 font-medium">Язык аудио</label>
-                <div class="relative">
-                    <select id="language-select" class="appearance-none w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm text-slate-600 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow">
-                        <option value="russian">Русский</option>
-                        <option value="english">English</option>
-                        <option value="auto">Автоопределение языка</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="md:col-span-2 space-y-4 pt-2 border-t border-slate-200/50">
-                <div class="flex items-center justify-between">
-                    <span class="text-sm text-slate-600">Добавлять таймкоды в текст</span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="timestamps-check" class="sr-only peer" checked>
-                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                    </label>
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <div class="flex flex-col">
-                        <span class="text-sm text-slate-600">Аппаратное ускорение (WebGPU)</span>
-                        <span class="text-[10px] text-slate-400 font-light mt-0.5">Ускоряет работу в разы. Требует современный браузер.</span>
-                    </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="gpu-check" class="sr-only peer" checked>
-                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                    </label>
-                </div>
-            </div>
+<div id="settings-panel" class="hidden mt-2 bg-slate-50/50 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in border border-slate-100">
+    <div>
+        <label class="block text-[11px] uppercase tracking-wider text-slate-400 mb-2 font-medium">Модель</label>
+        <div class="relative">
+            <select id="model-select" class="appearance-none w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm text-slate-600 focus:ring-1 focus:ring-blue-500 outline-none transition-shadow">
+                <!-- Tiny и Base лучше подходят для WebGPU без сжатия, Small может вылететь по памяти на слабых картах -->
+                <option value="Xenova/whisper-tiny">Tiny (Самая быстрая)</option>
+                <option value="Xenova/whisper-base" selected>Base (Рекомендуемая)</option>
+                <option value="Xenova/whisper-small">Small (Тяжелая, требует много VRAM)</option>
+            </select>
         </div>
+    </div>
+    <div>
+        <label class="block text-[11px] uppercase tracking-wider text-slate-400 mb-2 font-medium">Язык</label>
+        <div class="relative">
+            <select id="language-select" class="appearance-none w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm text-slate-600 focus:ring-1 focus:ring-blue-500 outline-none transition-shadow">
+                <option value="russian">Русский</option>
+                <option value="english">English</option>
+                <option value="auto">Автоопределение</option>
+            </select>
+        </div>
+    </div>
+    
+    <div class="md:col-span-2 space-y-4 pt-2 border-t border-slate-200/50">
+        <!-- Настройка GPU / FP32 -->
+        <div class="flex items-center justify-between">
+            <div class="flex flex-col">
+                <span class="text-sm text-slate-600">Отключить сжатие (FP32)</span>
+                <span class="text-[10px] text-slate-400 font-light mt-0.5">
+                    Загрузит видеокарту на 100%. Модель будет весить больше, но работать быстрее.
+                </span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="fp32-check" class="sr-only peer">
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+            </label>
+        </div>
+
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-slate-600">Добавлять таймкоды</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="timestamps-check" class="sr-only peer" checked>
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+            </label>
+        </div>
+    </div>
+</div>
 
         <!-- Результат -->
         <div id="output-area" class="hidden mt-10 opacity-0 transition-opacity duration-700">
